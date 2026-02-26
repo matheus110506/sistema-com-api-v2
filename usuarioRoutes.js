@@ -5,7 +5,8 @@ const authMiddleware = require('../middlewares/authMiddleware');
 
 router.post('/usuarios', usuarioController.cadastrarUsuario);
 router.post('/login', usuarioController.loginUsuario);
-router.get('/perfil', authMiddleware.verificarToken, (req, res) => {
+
+router.get('/perfil', authMiddleware, (req, res) => {
     res.json({
         mensagem: "Rota protegida acessada",
         usuario: req.usuario
