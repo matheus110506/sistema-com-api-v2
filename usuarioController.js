@@ -1,87 +1,57 @@
-const jwt = require('jsonwebtoken');
-const connection = require('../config/db');
-const bcrypt = require('bcrypt');
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const db = require("../config/db");
 
 exports.cadastrarUsuario = async (req, res) => {
-    const { nome, email, senha } = req.body;
-
-    if (!nome || !email || !senha) {
-        return res.status(400).json({ mensagem: "Preencha todos os campos" });
-    }
-
     try {
+        const { nome, email, senha } = req.body;
 
-        connection.query(
-            "SELECT id FROM usuarios WHERE email = ?",
-            [email],
-            async (err, results) => {
-                if (err) {
-                    return res.status(500).json({ erro: err });
-                }
-                if (results.length > 0) {
-                    return res.status(400).json({ mensagem: "Email já cadastrado" });
-                }
+        const senhaCriptografada = await bcrypt.hash(senha, 10);
 
-                const senhaHash = (await bcrypt.hash(senha, 10));
-
-                connection.query(
-                    "INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)",
-                    [nome, email, senhaHash],
-                    (err, result) => {
-                        if (err) {
-                            return res.status(500).json({ erro: err });
-                        }
-
-                        res.status(201).json({
-                            mensagem: "Usuário cadastrado com sucesso",
-                            id: result.insertId
-                        });
-                    }
-                );
-            }
+        await db.execute(
+            "INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)",
+            [nome, email, senhaCriptografada]
         );
+
+        res.status(201).json({ mensagem: "Usuário cadastrado com sucesso" });
+
     } catch (error) {
-        res.status(500).json({ erro: error });
+        console.error(error);
+        res.status(500).json({ mensagem: "Erro no cadastro" });
     }
 };
 
-exports.loginUsuario = (req, res) => {
-    const { email, senha } = req.body;
+exports.loginUsuario = async (req, res) => {
+    try {
+        const { email, senha } = req.body;
 
-    if (!email || !senha) {
-        return res.status(400).json({ mensagem: "Preencha todos os campos" });
-    }
+        const [rows] = await db.execute(
+            "SELECT * FROM usuarios WHERE email = ?",
+            [email]
+        );
 
-    connection.query(
-        "SELECT * FROM usuarios WHERE email = ?",
-        [email],
-        async (err, results) => {
-            if (err) {
-                return res.status(500).json({ erro: err });
-            }
-
-            if (results.length === 0) {
-                return res.status(400).json({ mensagem: "Email ou senha inválidos" });
-            }
-
-            const usuario = results[0];
-
-            const senhaValida = await bcrypt.compare(senha, usuario.senha);
-
-            if (!senhaValida) {
-                return res.status(400).json({ mensagem: "Email ou senha inválidos" });
-            }
-
-            const token = jwt.sign(
-                { id: usuario.id, email: usuario.email },
-                process.env.JWT_SECRET,
-                { expiresIn: '1h' }
-            );
-
-            res.json({
-                mensagem: "Login realizado com sucesso",
-                token: token
-            });
+        if (rows.length === 0) {
+            return res.status(401).json({ mensagem: "Usuário não encontrado" });
         }
-    );
+
+        const usuario = rows[0];
+
+        const senhaValida = await bcrypt.compare(senha, usuario.senha);
+
+        if (!senhaValida) {
+            return res.status(401).json({ mensagem: "Senha inválida" });
+        }
+
+        const token = jwt.sign(
+            { id: usuario.id, email: usuario.email },
+            process.env.JWT_SECRET,
+            { expiresIn: "1d" }
+        );
+
+        res.json({ token });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ mensagem: "Erro no login" });
+    }
 };
